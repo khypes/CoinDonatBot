@@ -376,17 +376,33 @@ async def process_balance_change(message: Message, state: FSMContext, session: A
         return
 
     from decimal import Decimal
-    if action == "add":
-        await credit(session, user.id, Decimal(str(amount)), TransactionType.ADMIN_ADJUSTMENT, ref_type="admin", ref_id=str(message.from_user.id))
-        msg = f"✅ Foydalanuvchi balansi {amount:,} so'mga to'ldirildi!\nYangi balans: <b>{float(user.balance):,.0f} so'm</b>"
-    else:
-        try:
-            await debit(session, user.id, Decimal(str(amount)), TransactionType.ADMIN_ADJUSTMENT, ref_type="admin", ref_id=str(message.from_user.id))
+    from services.wallet import InsufficientFunds
+    try:
+        if action == "add":
+            await credit(session, user.id, Decimal(str(amount)), TransactionType.ADMIN_ADJUST, ref_type="admin", ref_id=str(message.from_user.id))
+            await session.commit()
+            await session.refresh(user)
+            msg = f"✅ Foydalanuvchi balansi {amount:,} so'mga to'ldirildi!\nYangi balans: <b>{float(user.balance):,.0f} so'm</b>"
+            notify = f"✅ <b>Balansingiz to'ldirildi!</b>\n\n<blockquote>💰 Qo'shilgan: <b>{amount:,} so'm</b>\n💳 Joriy balans: <b>{float(user.balance):,.0f} so'm</b></blockquote>"
+        else:
+            await debit(session, user.id, Decimal(str(amount)), TransactionType.ADMIN_ADJUST, ref_type="admin", ref_id=str(message.from_user.id))
+            await session.commit()
+            await session.refresh(user)
             msg = f"✅ Foydalanuvchi balansidan {amount:,} so'm ayirildi!\nYangi balans: <b>{float(user.balance):,.0f} so'm</b>"
-        except Exception:
-            msg = "❌ Balans yetarli emas yoki xatolik yuz berdi!"
+            notify = None
+    except InsufficientFunds:
+        await session.rollback()
+        msg, notify = "❌ Foydalanuvchi balansi yetarli emas!", None
+    except Exception as e:
+        await session.rollback()
+        msg, notify = f"❌ Xatolik yuz berdi: <code>{type(e).__name__}</code>", None
 
-    await session.commit()
+    if notify:
+        try:
+            await message.bot.send_message(user.telegram_id, notify)
+        except Exception:
+            pass
+
     await state.clear()
     await message.answer(msg)
 
