@@ -8,6 +8,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from bot.filters.admin import IsAdmin
 from db.models.setting import Setting
+from core.ui import safe_delete as _safe_delete
 from core.emojis import (
     EMOJI_LABELS,
     get_emoji_id,
@@ -58,7 +59,7 @@ async def show_emojis_dashboard(message: Message, session: AsyncSession):
 
 @router.callback_query(F.data == "adm_emoji_back")
 async def back_to_emojis_menu(callback: CallbackQuery):
-    await callback.message.delete()
+    await _safe_delete(callback.message)
     await callback.answer()
 
 

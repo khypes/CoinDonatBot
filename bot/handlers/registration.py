@@ -11,6 +11,7 @@ from bot.states.registration import Registration
 from db.models.user import User
 from typing import Callable
 from core.config import config
+from core.ui import safe_delete as _safe_delete
 
 router = Router()
 
@@ -109,7 +110,7 @@ async def language_selected(callback: CallbackQuery, state: FSMContext):
         one_time_keyboard=True
     )
 
-    await callback.message.delete()
+    await _safe_delete(callback.message)
     await callback.message.answer(text, reply_markup=phone_kb)
     await state.set_state(Registration.phone_number)
 
@@ -161,7 +162,7 @@ async def phone_received(message: Message, state: FSMContext, session: AsyncSess
 @router.callback_query(F.data == "menu_shop")
 async def menu_shop(callback: CallbackQuery, session: AsyncSession, db_user: User, _: Callable[[str], str]):
     from bot.handlers.shop import show_shop
-    await callback.message.delete()
+    await _safe_delete(callback.message)
     await show_shop(callback.message, session, db_user, _)
     await callback.answer()
 
@@ -169,7 +170,7 @@ async def menu_shop(callback: CallbackQuery, session: AsyncSession, db_user: Use
 @router.callback_query(F.data == "menu_profile")
 async def menu_profile(callback: CallbackQuery, session: AsyncSession, db_user: User, _: Callable[[str], str]):
     from bot.handlers.profile import show_profile
-    await callback.message.delete()
+    await _safe_delete(callback.message)
     await show_profile(callback.message, session, db_user)
     await callback.answer()
 
@@ -177,7 +178,7 @@ async def menu_profile(callback: CallbackQuery, session: AsyncSession, db_user: 
 @router.callback_query(F.data == "menu_balance")
 async def menu_balance(callback: CallbackQuery, db_user: User):
     from bot.handlers.balance import show_balance_menu
-    await callback.message.delete()
+    await _safe_delete(callback.message)
     await show_balance_menu(callback.message, db_user)
     await callback.answer()
 
@@ -185,7 +186,7 @@ async def menu_balance(callback: CallbackQuery, db_user: User):
 @router.callback_query(F.data == "menu_useful")
 async def menu_useful(callback: CallbackQuery):
     from bot.handlers.useful import show_useful
-    await callback.message.delete()
+    await _safe_delete(callback.message)
     await show_useful(callback.message)
     await callback.answer()
 
@@ -193,7 +194,7 @@ async def menu_useful(callback: CallbackQuery):
 @router.callback_query(F.data == "menu_referral")
 async def menu_referral(callback: CallbackQuery, session: AsyncSession, db_user: User):
     from bot.handlers.referral import show_referral
-    await callback.message.delete()
+    await _safe_delete(callback.message)
     await show_referral(callback.message, session, db_user)
     await callback.answer()
 
@@ -201,6 +202,6 @@ async def menu_referral(callback: CallbackQuery, session: AsyncSession, db_user:
 @router.callback_query(F.data == "menu_admin")
 async def menu_admin(callback: CallbackQuery):
     from bot.handlers.admin.base import admin_menu
-    await callback.message.delete()
+    await _safe_delete(callback.message)
     await admin_menu(callback.message)
     await callback.answer()

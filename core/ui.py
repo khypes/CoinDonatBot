@@ -55,6 +55,14 @@ def main_menu_caption_short() -> str:
     )
 
 
+async def safe_delete(message) -> None:
+    """Xabarni o'chiradi; 48 soatdan eski yoki allaqachon o'chgan bo'lsa xato bermaydi."""
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
+
 async def answer_with_banner(
     message: Message,
     banner_path: str = "",

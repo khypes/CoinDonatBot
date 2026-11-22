@@ -17,6 +17,7 @@ from db.models.product import Category, Product
 from db.models.balance_transaction import BalanceTransaction, TransactionType
 from services.wallet import credit, debit
 from core.emojis import format_header_emoji
+from core.ui import safe_delete as _safe_delete
 
 router = Router()
 router.message.filter(IsAdmin())
@@ -163,7 +164,7 @@ async def show_statistics(message: Message, session: AsyncSession):
 
 @router.callback_query(F.data == "adm_stats_refresh")
 async def refresh_statistics(callback: CallbackQuery, session: AsyncSession):
-    await callback.message.delete()
+    await _safe_delete(callback.message)
     await show_statistics(callback.message, session)
     await callback.answer("🔄 Yangilandi")
 
