@@ -21,7 +21,7 @@ class Order(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     account_id = Column(Integer, ForeignKey("accounts.id"),
                         nullable=True)       # eski tizim
-    product_id = Column(Integer, ForeignKey("products.id"),
+    product_id = Column(Integer, ForeignKey("products.id", ondelete="SET NULL"),
                         nullable=True)       # yangi shop tizimi
     product_quantity = Column(Integer, default=1, nullable=False)
     player_id = Column(String(100), nullable=True)          # UC uchun PUBG Player ID

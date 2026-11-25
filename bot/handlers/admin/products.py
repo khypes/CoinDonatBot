@@ -460,7 +460,7 @@ async def delete_ask(callback: CallbackQuery, session: AsyncSession):
     try:
         await callback.message.edit_text(
             f"🗑 <b>{p.name}</b> o'chirilsinmi?\n\n<blockquote>Ombordagi barcha ma'lumotlar ham o'chadi. "
-            f"Buyurtma tarixi bor bo'lsa, mahsulot o'chirilmasdan do'kondan yashiriladi.</blockquote>",
+            f"Buyurtma tarixi saqlanib qoladi.</blockquote>",
             reply_markup=b.as_markup())
     except Exception:
         pass
@@ -471,16 +471,12 @@ async def delete_ask(callback: CallbackQuery, session: AsyncSession):
 async def delete_product(callback: CallbackQuery, session: AsyncSession, state: FSMContext):
     pid = int(callback.data.rsplit("_", 1)[1])
     try:
+        # Buyurtma tarixi saqlanadi, faqat mahsulotga bog'lanish uziladi
+        await session.execute(text("UPDATE orders SET product_id = NULL WHERE product_id = :pid"), {"pid": pid})
         await session.execute(sa_delete(Product).where(Product.id == pid))
         await session.commit()
         await callback.answer("Mahsulot o'chirildi!", show_alert=True)
-    except Exception:
+    except Exception as e:
         await session.rollback()
-        p = await session.get(Product, pid)
-        if p:
-            p.is_active = False
-            await session.commit()
-        await callback.answer(
-            "Buyurtmalar bog'langani uchun o'chirib bo'lmadi — mahsulot do'kondan yashirildi.",
-            show_alert=True)
+        await callback.answer(f"❌ O'chirib bo'lmadi: {type(e).__name__}", show_alert=True)
     await admin_prod_back(callback, session, state)

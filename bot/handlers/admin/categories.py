@@ -4,7 +4,7 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, delete as sa_delete
+from sqlalchemy import select, func, text, delete as sa_delete
 
 from bot.filters.admin import IsAdmin
 from core.emojis import create_button, extract_custom_emoji_id
@@ -350,8 +350,7 @@ async def delete_ask(callback: CallbackQuery, session: AsyncSession):
     b.add(create_button("Ha, o'chirish", emoji_key="delete", callback_data=f"adm_cat_delok_{cat_id}"))
     b.add(create_button("Yo'q", emoji_key="cancel", callback_data=f"adm_cat_view_{cat_id}"))
     b.adjust(1)
-    warn = (f"Ichidagi <b>{cnt} ta mahsulot</b> ham o'chadi (buyurtmasi bor mahsulotlar bo'lsa, "
-            f"o'chirish o'rniga yashirish tavsiya etiladi).") if cnt else "Ichida mahsulot yo'q."
+    warn = (f"Ichidagi <b>{cnt} ta mahsulot</b> ham o'chadi. Buyurtma tarixi saqlanib qoladi.") if cnt else "Ichida mahsulot yo'q."
     try:
         await callback.message.edit_text(
             f"🗑 <b>{cat.name}</b> o'chirilsinmi?\n\n<blockquote>{warn}</blockquote>",
@@ -367,19 +366,17 @@ async def delete_category(callback: CallbackQuery, session: AsyncSession):
     cat = await session.get(Category, cat_id)
     if cat:
         try:
+            # Buyurtma tarixi saqlanadi, faqat mahsulotlarga bog'lanish uziladi
+            await session.execute(
+                text("UPDATE orders SET product_id = NULL WHERE product_id IN "
+                     "(SELECT id FROM products WHERE category_id = :cid)"), {"cid": cat_id})
+            await session.execute(sa_delete(Product).where(Product.category_id == cat_id))
             await session.execute(sa_delete(Category).where(Category.id == cat_id))
             await session.commit()
             await callback.answer("Kategoriya o'chirildi!", show_alert=True)
-        except Exception:
+        except Exception as e:
             await session.rollback()
-            # Buyurtmalar bog'langan — o'chirib bo'lmaydi, faqat yashiramiz
-            cat = await session.get(Category, cat_id)
-            if cat:
-                cat.is_active = False
-                await session.commit()
-            await callback.answer(
-                "Buyurtmalar bog'langani uchun o'chirib bo'lmadi — kategoriya do'kondan yashirildi.",
-                show_alert=True)
+            await callback.answer(f"❌ O'chirib bo'lmadi: {type(e).__name__}", show_alert=True)
     else:
         await callback.answer("Topilmadi", show_alert=True)
     text, kb = await _list_view(session)
