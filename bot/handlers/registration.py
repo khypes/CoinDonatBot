@@ -15,7 +15,7 @@ from core.ui import safe_delete as _safe_delete
 
 router = Router()
 
-MAIN_MENU_BANNER = "bot/images/menu_v4.png"
+MAIN_MENU_BANNER = "bot/images/menu_v5.png"
 
 
 def get_main_menu_keyboard(_: Callable[[str], str], is_admin: bool = False):

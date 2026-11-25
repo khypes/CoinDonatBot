@@ -9,7 +9,7 @@ from core.config import config
 
 router = Router()
 
-REFERRAL_BANNER = "bot/images/referral_v4.png"
+REFERRAL_BANNER = "bot/images/referral_v5.png"
 
 
 from core.utils import format_money

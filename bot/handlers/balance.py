@@ -15,7 +15,7 @@ from core.config import config
 
 router = Router()
 
-BALANCE_BANNER = "bot/images/balance_v4.png"
+BALANCE_BANNER = "bot/images/balance_v5.png"
 MIN_AMOUNT = 10_000  # Minimal to'ldirish summasi (UZS)
 
 
