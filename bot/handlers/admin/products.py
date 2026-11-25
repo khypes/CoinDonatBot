@@ -1,9 +1,9 @@
-"""Admin: mahsulotlarni boshqarish (UC va akkaunt turlari, tahrirlash, ombor, premium emoji)."""
+"""Admin: mahsulotlarni boshqarish (akkauntlar: qo'shish, tahrirlash, ombor, premium emoji)."""
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, text, delete as sa_delete
+from sqlalchemy import select, text, func, delete as sa_delete
 from bot.filters.admin import IsAdmin
 from db.models.product import Product, Category
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -11,16 +11,12 @@ from aiogram.fsm.state import State, StatesGroup
 from core.security import encrypt_text, decrypt_text
 from core.emojis import create_button
 
-UC_STOCK = 9999  # UC uchun ombor cheksiz (Player ID orqali qo'lda yetkaziladi)
-
-
 class ManageStock(StatesGroup):
     waiting_for_data = State()
 
 
 class ProductStates(StatesGroup):
     waiting_for_category = State()
-    waiting_for_type = State()
     waiting_for_name = State()
     waiting_for_price = State()
     waiting_for_desc = State()
@@ -34,10 +30,6 @@ class ProductStates(StatesGroup):
 router = Router()
 router.message.filter(IsAdmin())
 router.callback_query.filter(IsAdmin())
-
-
-def _is_uc(p: Product) -> bool:
-    return getattr(p, "product_type", "account") == "uc"
 
 
 def _parse_price(raw: str):
@@ -64,19 +56,19 @@ def _skip_kb():
 
 
 async def _list_view(session: AsyncSession):
-    res = await session.execute(select(Product).order_by(Product.category_id, Product.id))
+    res = await session.execute(select(Product).where(func.coalesce(Product.product_type, "account") != "uc").order_by(Product.category_id, Product.id))
     products = res.scalars().all()
     builder = InlineKeyboardBuilder()
     builder.add(create_button("Yangi mahsulot", emoji_key="add", callback_data="adm_prod_add"))
     for p in products:
-        qty = "∞" if _is_uc(p) else f"{p.quantity} ta"
+        qty = f"{p.quantity} ta"
         mark = "" if p.is_active else " (o'chiq)"
         builder.add(create_button(
-            f"{p.name} — {qty}{mark}", emoji_key="uc" if _is_uc(p) else "pubg",
+            f"{p.name} — {qty}{mark}", emoji_key="pubg",
             callback_data=f"adm_prod_{p.id}"))
     builder.adjust(1)
-    body = ("<blockquote>💎 UC — Player ID orqali qo'lda yetkaziladi (ombor kerak emas).\n"
-            "🎮 Akkaunt — omborga <code>login:parol</code> qo'shiladi, avtomatik beriladi.</blockquote>"
+    body = ("<blockquote>Akkaunt mahsulotlari: omborga <code>login:parol</code> qo'shiladi, "
+            "xaridda mijozga avtomatik beriladi.</blockquote>"
             if products else
             "<blockquote>Hozircha mahsulot yo'q. Avval kategoriya yarating, so'ng «Yangi mahsulot» ni bosing.</blockquote>")
     return f"📦 <b>Mahsulotlar</b> — {len(products)} ta\n\n{body}", builder.as_markup()
@@ -84,23 +76,20 @@ async def _list_view(session: AsyncSession):
 
 async def _detail_view(session: AsyncSession, p: Product):
     cat = await session.get(Category, p.category_id)
-    uc = _is_uc(p)
     desc = (p.description or "").strip() or "—"
     text_ = (
-        f"{'💎' if uc else '🎮'} <b>{p.name}</b>\n\n"
+        f"🎮 <b>{p.name}</b>\n\n"
         f"<blockquote>"
-        f"Turi: {'PUBG Mobile UC' if uc else 'O`yin akkaunti'}\n"
         f"Kategoriya: {cat.name if cat else '—'}\n"
         f"Narxi: {float(p.price_uzs):,.0f} so'm\n"
-        f"Qoldiq: {'cheksiz (Player ID)' if uc else str(p.quantity) + ' ta'}\n"
+        f"Qoldiq: {p.quantity} ta\n"
         f"Holati: {'🟢 Faol' if p.is_active else '🔴 O`chiq'}\n"
         f"Rasm: {'bor' if p.image_file_id else 'yo`q'}"
         f"</blockquote>\n"
         f"<blockquote>📝 {desc}</blockquote>"
     )
     b = InlineKeyboardBuilder()
-    if not uc:
-        b.add(create_button("Ombor qo'shish (Login:Parol)", emoji_key="add", callback_data=f"adm_addstock_{p.id}"))
+    b.add(create_button("Ombor qo'shish (Login:Parol)", emoji_key="add", callback_data=f"adm_addstock_{p.id}"))
     b.add(create_button("Nomi", emoji_key="note", callback_data=f"adm_prod_editname_{p.id}"))
     b.add(create_button("Narxi", emoji_key="cash", callback_data=f"adm_prod_editprice_{p.id}"))
     b.add(create_button("Tavsif", emoji_key="note", callback_data=f"adm_prod_editdesc_{p.id}"))
@@ -109,10 +98,7 @@ async def _detail_view(session: AsyncSession, p: Product):
                         callback_data=f"adm_prod_toggle_{p.id}"))
     b.add(create_button("O'chirish", emoji_key="delete", callback_data=f"adm_prod_del_{p.id}"))
     b.add(create_button("Orqaga", emoji_key="back", callback_data="adm_prod_back"))
-    if uc:
-        b.adjust(2, 2, 1, 1, 1)
-    else:
-        b.adjust(1, 2, 2, 1, 1, 1)
+    b.adjust(1, 2, 2, 1, 1, 1)
     return text_, b.as_markup()
 
 
@@ -192,26 +178,9 @@ async def add_prod_start(callback: CallbackQuery, state: FSMContext, session: As
 @router.callback_query(ProductStates.waiting_for_category, F.data.regexp(r"^adm_prod_cat_\d+$"))
 async def add_prod_cat(callback: CallbackQuery, state: FSMContext):
     await state.update_data(cat_id=int(callback.data.rsplit("_", 1)[1]))
-    await state.set_state(ProductStates.waiting_for_type)
-    b = InlineKeyboardBuilder()
-    b.add(create_button("PUBG UC (Player ID orqali)", emoji_key="uc", callback_data="adm_prod_type_uc"))
-    b.add(create_button("O'yin akkaunti (Login:Parol)", emoji_key="pubg", callback_data="adm_prod_type_account"))
-    b.add(create_button("Bekor qilish", emoji_key="cancel", callback_data="adm_prod_cancel"))
-    b.adjust(1)
-    await callback.message.answer(
-        "🧩 <b>Mahsulot turi</b>\n\n"
-        "<blockquote>💎 <b>UC</b> — mijoz PUBG Player ID yuboradi, siz qo'lda UC tashlaysiz. Ombor kerak emas.\n"
-        "🎮 <b>Akkaunt</b> — omborga login:parol qo'shasiz, mijozga avtomatik beriladi.</blockquote>",
-        reply_markup=b.as_markup())
-    await callback.answer()
-
-
-@router.callback_query(ProductStates.waiting_for_type, F.data.in_({"adm_prod_type_uc", "adm_prod_type_account"}))
-async def add_prod_type(callback: CallbackQuery, state: FSMContext):
-    await state.update_data(ptype=callback.data.replace("adm_prod_type_", ""))
     await state.set_state(ProductStates.waiting_for_name)
     await callback.message.answer(
-        "✏️ <b>Nomi</b>\n\n<blockquote>Mahsulot nomini yuboring.\nMasalan: <code>60 UC</code>, <code>325 UC</code> yoki <code>Conqueror akkaunt</code></blockquote>",
+        "✏️ <b>Nomi</b>\n\n<blockquote>Mahsulot nomini yuboring.\nMasalan: <code>Conqueror akkaunt</code></blockquote>",
         reply_markup=_cancel_kb())
     await callback.answer()
 
@@ -276,12 +245,10 @@ async def skip_desc(callback: CallbackQuery, state: FSMContext):
 
 async def _create_product(target: Message, state: FSMContext, session: AsyncSession, image_id=None):
     data = await state.get_data()
-    uc = data.get("ptype") == "uc"
     p = Product(
         category_id=data["cat_id"], name=data["name"], price_uzs=data["price"],
         description=data.get("desc"), image_file_id=image_id,
-        product_type="uc" if uc else "account",
-        quantity=UC_STOCK if uc else 0, is_active=True,
+        product_type="account", quantity=0, is_active=True,
     )
     session.add(p)
     await session.commit()
@@ -289,8 +256,7 @@ async def _create_product(target: Message, state: FSMContext, session: AsyncSess
     await state.clear()
     await target.answer(f"✅ Mahsulot yaratildi: <b>{p.name}</b>")
     await _show_detail_new(target, session, p.id)
-    if not uc:
-        await target.answer("<blockquote>Akkaunt mahsuloti omborsiz sotilmaydi — yuqoridagi «Ombor qo'shish» tugmasi orqali login:parol qo'shing.</blockquote>")
+    await target.answer("<blockquote>Akkaunt mahsuloti omborsiz sotilmaydi — yuqoridagi «Ombor qo'shish» tugmasi orqali login:parol qo'shing.</blockquote>")
 
 
 @router.callback_query(ProductStates.waiting_for_image, F.data == "adm_prod_skip")

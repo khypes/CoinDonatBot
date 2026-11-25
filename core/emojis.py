@@ -146,7 +146,6 @@ EMOJI_LABELS = {
     "share": "↗️ Ulashish / Havola",
     "admin": "⚙️ Admin panel / Sozlamalar",
     "wave": "👋 Salomlashish",
-    "uc": "💎 UC mahsulot",
     "receipt": "🧾 Buyurtma / Chek",
     "pending": "⏳ Kutilmoqda",
     "phone": "📱 Telefon",

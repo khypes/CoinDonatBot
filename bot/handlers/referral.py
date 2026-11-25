@@ -116,7 +116,7 @@ async def show_referral(message: Message, session: AsyncSession, db_user: User):
     builder = InlineKeyboardBuilder()
 
     # Fix #3: "Do'stlarga ulashish" URL button with Telegram share dialog
-    share_text = "COIN DONAT BOT orqali PUBG UC va akkauntlar xarid qiling!"
+    share_text = "COIN DONAT BOT orqali o'yin akkauntlarini xarid qiling!"
     share_url = f"https://t.me/share/url?url={ref_link}&text={share_text}"
     builder.button(text="↗️ Do'stlarga ulashish", url=share_url)
 

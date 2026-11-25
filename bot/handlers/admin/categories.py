@@ -56,7 +56,7 @@ async def _list_view(session: AsyncSession):
         ))
     builder.adjust(1)
     body = (
-        "<blockquote>Kategoriya — do'kondagi bo'lim (masalan: <b>PUBG UC</b>, <b>PUBG Akkauntlar</b>). "
+        "<blockquote>Kategoriya — do'kondagi bo'lim (masalan: <b>PUBG Akkauntlar</b>, <b>Free Fire</b>). "
         "Mahsulotlar kategoriya ichiga qo'shiladi.</blockquote>"
         if categories else
         "<blockquote>Hozircha kategoriya yo'q. «Yangi kategoriya» tugmasi orqali qo'shing.</blockquote>"
@@ -162,7 +162,7 @@ async def add_cat_start(callback: CallbackQuery, state: FSMContext):
     await callback.message.answer(
         "📂 <b>Yangi kategoriya</b>\n\n"
         "<blockquote>Kategoriya nomini yuboring.\n"
-        "Masalan: <code>PUBG UC</code> yoki <code>PUBG Akkauntlar</code></blockquote>",
+        "Masalan: <code>PUBG Akkauntlar</code> yoki <code>Free Fire</code></blockquote>",
         reply_markup=_cancel_kb(),
     )
     await callback.answer()

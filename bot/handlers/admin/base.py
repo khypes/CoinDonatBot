@@ -119,10 +119,6 @@ async def show_statistics(message: Message, session: AsyncSession):
         select(func.coalesce(func.sum(User.balance), 0))
     )).scalar() or 0
 
-    waiting_delivery = (await session.execute(
-        select(func.count(Order.id)).where(Order.status == OrderStatus.APPROVED)
-    )).scalar() or 0
-
     avg_check = float(total_revenue) / total_orders if total_orders else 0
 
     # Faol foydalanuvchilar (so'nggi 7 kun ichida xarid qilganlar)
@@ -150,7 +146,6 @@ async def show_statistics(message: Message, session: AsyncSession):
         f"⏳ <b>Kutilmoqda</b>\n"
         f"<blockquote>"
         f"• To'lov cheklari: <b>{pending_balance} ta</b>\n"
-        f"• Yetkazilishi kerak (UC): <b>{waiting_delivery} ta</b>\n"
         f"• Faol mahsulotlar: <b>{total_products} ta</b>"
         f"</blockquote>"
     )
@@ -175,18 +170,15 @@ async def show_stock_status(message: Message, session: AsyncSession):
     from db.models.stock_item import StockItem, StockItemStatus
 
     rows = (await session.execute(
-        select(Product.name, Product.product_type, func.count(StockItem.id))
+        select(Product.name, func.count(StockItem.id))
         .outerjoin(StockItem, (StockItem.product_id == Product.id) & (StockItem.status == StockItemStatus.AVAILABLE))
-        .where(Product.is_active.is_(True))
-        .group_by(Product.id, Product.name, Product.product_type)
+        .where(Product.is_active.is_(True), func.coalesce(Product.product_type, "account") != "uc")
+        .group_by(Product.id, Product.name)
         .order_by(Product.name)
     )).all()
 
     lines, low = [], 0
-    for name, ptype, cnt in rows:
-        if ptype == "uc":
-            lines.append(f"💎 {name}: <b>cheksiz</b>")
-            continue
+    for name, cnt in rows:
         mark = "🔴" if cnt == 0 else ("🟡" if cnt <= 3 else "🟢")
         low += 1 if cnt <= 3 else 0
         lines.append(f"{mark} {name}: <b>{cnt} ta</b>")

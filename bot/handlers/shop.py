@@ -2,7 +2,7 @@ from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, FSInputFile
 from aiogram.fsm.context import FSMContext
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from typing import Callable
 import os
 from decimal import Decimal
@@ -14,13 +14,11 @@ from sqlalchemy import text
 from db.models.product import Category, Product
 from db.models.user import User
 from db.models.order import Order, OrderStatus
-from bot.states.checkout import UCCheckout
 from bot.keyboards.shop import (
     get_categories_keyboard,
     get_products_keyboard,
     get_product_detail_keyboard,
     get_purchase_confirm_keyboard,
-    get_uc_confirm_keyboard,
 )
 from services.orders import generate_order_number
 
@@ -98,7 +96,8 @@ async def show_category_products(callback: CallbackQuery, session: AsyncSession)
 
     prods_result = await session.execute(
         select(Product)
-        .where(Product.category_id == cat_id, Product.is_active == True)
+        .where(Product.category_id == cat_id, Product.is_active == True,
+               func.coalesce(Product.product_type, "account") != "uc")
         .order_by(Product.price_uzs)
     )
     products = prods_result.scalars().all()
@@ -119,7 +118,7 @@ async def show_product_detail(callback: CallbackQuery, session: AsyncSession):
     prod_id = int(callback.data.split("_")[2])
     prod = await session.get(Product, prod_id)
 
-    if not prod:
+    if not prod or getattr(prod, "product_type", "account") == "uc":
         await callback.answer("Mahsulot topilmadi!", show_alert=True)
         return
 
@@ -159,7 +158,8 @@ async def back_to_product_list(callback: CallbackQuery, session: AsyncSession):
 
     prods_result = await session.execute(
         select(Product)
-        .where(Product.category_id == cat_id, Product.is_active == True)
+        .where(Product.category_id == cat_id, Product.is_active == True,
+               func.coalesce(Product.product_type, "account") != "uc")
         .order_by(Product.price_uzs)
     )
     products = prods_result.scalars().all()
@@ -184,9 +184,11 @@ async def start_purchase(callback: CallbackQuery, state: FSMContext, session: As
         await callback.answer("❌ Mahsulot mavjud emas!", show_alert=True)
         return
 
-    is_uc = getattr(prod, "product_type", "account") == "uc"
+    if getattr(prod, "product_type", "account") == "uc":
+        await callback.answer("❌ Bu mahsulot endi sotilmaydi.", show_alert=True)
+        return
 
-    if not is_uc and prod.quantity <= 0:
+    if prod.quantity <= 0:
         await callback.answer("❌ Afsuski, hozircha stokda yo'q!", show_alert=True)
         return
 
@@ -204,26 +206,6 @@ async def start_purchase(callback: CallbackQuery, state: FSMContext, session: As
             f"Balansni to'ldiring!",
             show_alert=True
         )
-        return
-
-    if is_uc:
-        await state.update_data(prod_id=prod.id)
-        await state.set_state(UCCheckout.waiting_for_player_id)
-        msg_text = (
-            f"💎 <b>{prod.name}</b> xaridi\n\n"
-            f"<blockquote>"
-            f"💰 Narxi: <b>{format_money(price)} ({price_usd})</b>\n"
-            f"💳 Balansingiz: <b>{format_money(balance)}</b>\n\n"
-            f"🎮 <b>PUBG Mobile Player ID raqamingizni yuboring:</b>\n"
-            f"<i>(Masalan: 5123456789)</i>"
-            f"</blockquote>\n\n"
-            f"❌ Bekor qilish uchun: /cancel"
-        )
-        try:
-            await callback.message.edit_caption(caption=msg_text, reply_markup=None)
-        except Exception:
-            await callback.message.edit_text(text=msg_text, reply_markup=None)
-        await callback.answer()
         return
 
     text = (
@@ -244,182 +226,13 @@ async def start_purchase(callback: CallbackQuery, state: FSMContext, session: As
     await callback.answer()
 
 
-@router.message(UCCheckout.waiting_for_player_id)
-async def process_player_id(message: Message, state: FSMContext, session: AsyncSession, db_user: User):
-    if message.text == "/cancel":
-        await state.clear()
-        await message.answer("❌ Xarid bekor qilindi.")
-        return
-
-    player_id = message.text.strip()
-    if not player_id.isdigit() or len(player_id) < 5 or len(player_id) > 16:
-        await message.answer("⚠️ <b>Noto'g'ri Player ID!</b>\n\nIltimos, PUBG Mobile Player ID raqamingizni to'g'ri kiriting (faqat raqamlar, 5-16 xonali):\nBekor qilish uchun: /cancel")
-        return
-
-    data = await state.get_data()
-    prod_id = data.get("prod_id")
-    prod = await session.get(Product, prod_id)
-    if not prod:
-        await state.clear()
-        await message.answer("❌ Mahsulot topilmadi.")
-        return
-
-    await state.update_data(player_id=player_id)
-    balance = db_user.balance or Decimal('0')
-    price = prod.price_uzs
-
-    confirm_text = (
-        f"💎 <b>UC Xaridini tasdiqlash</b>\n\n"
-        f"<blockquote>"
-        f"🎮 Mahsulot: <b>{prod.name}</b>\n"
-        f"🆔 PUBG Player ID: <code>{player_id}</code>\n"
-        f"💰 Narxi: <b>{format_money(price)}</b>\n"
-        f"💳 Sizning balansingiz: <b>{format_money(balance)}</b>"
-        f"</blockquote>\n\n"
-        f"⚠️ <i>Player ID to'g'ri kiritilganiga ishonch hosil qiling!</i>\n"
-        f"<i>Xaridni tasdiqlaysizmi?</i>"
-    )
-
-    await message.answer(confirm_text, reply_markup=get_uc_confirm_keyboard(prod.id))
-
-
-@router.callback_query(F.data.startswith("shop_uc_confirm_"))
-async def confirm_uc_purchase(callback: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User):
-    data = await state.get_data()
-    player_id = data.get("player_id")
-    prod_id = int(callback.data.split("_")[3])
-    prod = await session.get(Product, prod_id)
-
-    if not prod or not prod.is_active:
-        await state.clear()
-        await callback.answer("❌ Mahsulot mavjud emas!", show_alert=True)
-        return
-
-    if not player_id:
-        await state.clear()
-        await callback.answer("❌ Player ID topilmadi, qaytadan urinib ko'ring!", show_alert=True)
-        return
-
-    price = prod.price_uzs
-    order_num = await generate_order_number(session)
-
-    # 1. Pulni yechamiz
-    try:
-        await debit(session, db_user.id, price, TransactionType.PURCHASE, ref_type="order", ref_id=order_num)
-    except InsufficientFunds:
-        await session.rollback()
-        await state.clear()
-        await callback.answer("❌ Balansingiz yetarli emas!", show_alert=True)
-        return
-    except Exception:
-        await session.rollback()
-        await state.clear()
-        await callback.answer("❌ Tizimda xatolik yuz berdi!", show_alert=True)
-        return
-
-    # 2. Buyurtma yaratamiz
-    order = Order(
-        order_number=order_num,
-        user_id=db_user.id,
-        product_id=prod_id,
-        product_quantity=1,
-        player_id=player_id,
-        price=price,
-        status=OrderStatus.APPROVED,  # Admin yetkazib berishi kutilmoqda
-    )
-    session.add(order)
-    await session.flush()
-
-    # 3. Cashback va referal
-    from db.models.setting import Setting, SettingKeys
-    async def get_setting_float(key, default):
-        res = await session.execute(select(Setting).where(Setting.key == key))
-        s = res.scalar_one_or_none()
-        try:
-            return float(s.value) if s else default
-        except Exception:
-            return default
-
-    cb_pct = await get_setting_float(SettingKeys.CASHBACK_PERCENT, 1.0)
-    ref_pct = await get_setting_float(SettingKeys.REFERRAL_PERCENT, 2.0)
-
-    buyer_cb = Decimal(str(price)) * Decimal(str(cb_pct / 100))
-    if buyer_cb > 0:
-        await session.execute(
-            text("UPDATE users SET ref_balance = ref_balance + :cb WHERE id = :uid"),
-            {"cb": buyer_cb, "uid": db_user.id}
-        )
-
-    if db_user.referred_by:
-        referrer_cb = Decimal(str(price)) * Decimal(str(ref_pct / 100))
-        if referrer_cb > 0:
-            await session.execute(
-                text("UPDATE users SET ref_balance = ref_balance + :cb WHERE referral_code = :ref"),
-                {"cb": referrer_cb, "ref": db_user.referred_by}
-            )
-
-    await session.commit()
-    await session.refresh(db_user)
-    await state.clear()
-
-    # 4. Foydalanuvchiga xabar
-    text_msg = (
-        f"✅ <b>Buyurtmangiz qabul qilindi!</b>\n\n"
-        f"<blockquote>"
-        f"🧾 Buyurtma: <code>{order_num}</code>\n"
-        f"💎 Mahsulot: <b>{prod.name}</b>\n"
-        f"🆔 Player ID: <code>{player_id}</code>\n"
-        f"💰 To'landi: <b>{format_money(price)}</b>\n"
-        f"💳 Qolgan balans: <b>{format_money(db_user.balance)}</b>"
-        f"</blockquote>\n\n"
-        f"⚡️ <b>UC tez orada hisobingizga tushiriladi!</b>"
-    )
-
-    try:
-        await callback.message.edit_text(text=text_msg, reply_markup=None)
-    except Exception:
-        try:
-            await callback.message.edit_caption(caption=text_msg, reply_markup=None)
-        except Exception:
-            await callback.message.answer(text=text_msg)
-
-    # 5. Adminga xabar va boshqaruv tugmalari
-    from aiogram import Bot
-    from core.config import config as _config
-    from aiogram.utils.keyboard import InlineKeyboardBuilder
-    
-    bot: Bot = callback.bot
-    buyer = f"@{db_user.username}" if db_user.username else f"ID: {db_user.telegram_id}"
-    admin_text = (
-        f"⚡️ <b>YANGI UC BUYURTMASI!</b>\n\n"
-        f"🧾 Buyurtma: <code>{order_num}</code>\n"
-        f"💎 Mahsulot: <b>{prod.name}</b>\n"
-        f"🆔 <b>Player ID:</b> <code>{player_id}</code>\n"
-        f"👤 Xaridor: {buyer}\n"
-        f"💰 Summa: <b>{format_money(price)}</b>\n\n"
-        f"❗️ Iltimos, UC ni o'yinchiga tushirib bering va tasdiqlang."
-    )
-
-    adm_builder = InlineKeyboardBuilder()
-    adm_builder.button(text="✅ Yetkazildi (Bajarildi)", callback_data=f"adm_uc_done_{order.id}")
-    adm_builder.button(text="❌ Bekor qilish (Pulni qaytarish)", callback_data=f"adm_uc_refund_{order.id}")
-    adm_builder.adjust(1)
-
-    try:
-        await bot.send_message(_config.ADMIN_ID, admin_text, reply_markup=adm_builder.as_markup())
-        if _config.ORDERS_CHANNEL_ID:
-            await bot.send_message(_config.ORDERS_CHANNEL_ID, admin_text)
-    except Exception:
-        pass
-
-
 @router.callback_query(F.data.startswith("shop_confirm_"))
 async def confirm_purchase(callback: CallbackQuery, session: AsyncSession, db_user: User):
     prod_id = int(callback.data.split("_")[2])
     
     # Mahsulotni tekshiramiz
     prod = await session.get(Product, prod_id)
-    if not prod or not prod.is_active:
+    if not prod or not prod.is_active or getattr(prod, "product_type", "account") == "uc":
         await callback.answer("❌ Mahsulot topilmadi!", show_alert=True)
         return
     

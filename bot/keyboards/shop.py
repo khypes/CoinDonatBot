@@ -31,15 +31,11 @@ def get_products_keyboard(products: List[Product], category_id: int) -> InlineKe
     """Mahsulotlar ro'yxati uchun inline klaviatura (Premium emoji bilan)"""
     builder = InlineKeyboardBuilder()
     for prod in products:
-        is_uc = getattr(prod, "product_type", "account") == "uc"
-        emoji_key = "uc" if is_uc else "pubg"
+        emoji_key = "pubg"
         price_usd = float(prod.price_usd) if prod.price_usd else float(prod.price_uzs) / USD_RATE
         price = f"${price_usd:.2f}"
 
-        if is_uc:
-            text = f"{prod.name} — {price}"
-        else:
-            text = f"{prod.name} — {prod.quantity or 0} dona — {price}"
+        text = f"{prod.name} — {prod.quantity or 0} dona — {price}"
 
         builder.add(create_button(text, emoji_key=emoji_key, callback_data=f"shop_prod_{prod.id}"))
     builder.add(create_button("Orqaga", emoji_key="back", callback_data="shop_back_cats"))
@@ -50,9 +46,7 @@ def get_products_keyboard(products: List[Product], category_id: int) -> InlineKe
 def get_product_detail_keyboard(product: Product) -> InlineKeyboardMarkup:
     """Mahsulot batafsil uchun inline klaviatura (Premium emoji bilan)"""
     builder = InlineKeyboardBuilder()
-    is_uc = getattr(product, "product_type", "account") == "uc"
-
-    if is_uc or product.quantity > 0:
+    if product.quantity > 0:
         builder.add(create_button("Sotib olish", emoji_key="shop", callback_data=f"shop_buy_{product.id}"))
     else:
         builder.add(create_button("Hozircha mavjud emas", emoji_key="cancel", callback_data="shop_noop"))
@@ -66,14 +60,5 @@ def get_purchase_confirm_keyboard(product_id: int) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.add(create_button("Tasdiqlash", emoji_key="verify", callback_data=f"shop_confirm_{product_id}"))
     builder.add(create_button("Bekor qilish", emoji_key="cancel", callback_data=f"shop_back_prod_confirm_{product_id}"))
-    builder.adjust(1)
-    return builder.as_markup()
-
-
-def get_uc_confirm_keyboard(product_id: int) -> InlineKeyboardMarkup:
-    """UC xarid tasdiqlash uchun klaviatura"""
-    builder = InlineKeyboardBuilder()
-    builder.add(create_button("Tasdiqlash va to'lash", emoji_key="verify", callback_data=f"shop_uc_confirm_{product_id}"))
-    builder.add(create_button("Bekor qilish", emoji_key="cancel", callback_data=f"shop_back_prod_{product_id}"))
     builder.adjust(1)
     return builder.as_markup()
