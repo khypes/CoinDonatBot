@@ -4,7 +4,7 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, text, delete as sa_delete
+from sqlalchemy import select, func, text as sa_text, delete as sa_delete
 
 from bot.filters.admin import IsAdmin
 from core.emojis import create_button, extract_custom_emoji_id
@@ -368,7 +368,7 @@ async def delete_category(callback: CallbackQuery, session: AsyncSession):
         try:
             # Buyurtma tarixi saqlanadi, faqat mahsulotlarga bog'lanish uziladi
             await session.execute(
-                text("UPDATE orders SET product_id = NULL WHERE product_id IN "
+                sa_text("UPDATE orders SET product_id = NULL WHERE product_id IN "
                      "(SELECT id FROM products WHERE category_id = :cid)"), {"cid": cat_id})
             await session.execute(sa_delete(Product).where(Product.category_id == cat_id))
             await session.execute(sa_delete(Category).where(Category.id == cat_id))
