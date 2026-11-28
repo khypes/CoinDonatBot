@@ -314,6 +314,9 @@ async def set_language(callback: CallbackQuery, session: AsyncSession, db_user: 
     lang = callback.data.split("_")[1]
     db_user.language = lang
     await session.commit()
+    from core.translate import current_lang, remember_lang
+    remember_lang(callback.from_user.id, lang)
+    current_lang.set(lang)
 
     confirms = {
         "uz": "✅ Til o'zgartirildi: 🇺🇿 O'zbek",

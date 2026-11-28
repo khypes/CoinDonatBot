@@ -144,6 +144,8 @@ async def phone_received(message: Message, state: FSMContext, session: AsyncSess
     )
     session.add(new_user)
     await session.commit()
+    from core.translate import remember_lang
+    remember_lang(message.from_user.id, lang)
 
     success_msg = {
         "uz": "✅ <b>Ro'yxatdan o'tish muvaffaqiyatli yakunlandi!</b>\n\nAsosiy menyuni ochish uchun /start bosing.",

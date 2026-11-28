@@ -5,6 +5,7 @@ from aiogram import BaseMiddleware
 from aiogram.types import TelegramObject, User as TgUser
 from sqlalchemy import select
 from db.models.user import User
+from core.translate import current_lang, remember_lang
 
 
 class I18nMiddleware(BaseMiddleware):
@@ -40,6 +41,9 @@ class I18nMiddleware(BaseMiddleware):
 
         data["db_user"] = db_user
         data["lang"] = lang
+        current_lang.set(lang if lang in ("uz", "ru", "en") else "uz")
+        if tg_user:
+            remember_lang(tg_user.id, lang)
 
         def _(key: str) -> str:
             return self.locales.get(lang, {}).get(key, key)

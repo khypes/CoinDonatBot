@@ -15,6 +15,7 @@ from db.database import async_session
 from bot.middlewares.db import DbSessionMiddleware
 from bot.middlewares.i18n import I18nMiddleware
 from bot.middlewares.premium_emoji import PremiumEmojiMiddleware
+from bot.middlewares.translate import TranslateMiddleware
 
 # Handlerlar
 from bot.handlers.registration import router as reg_router
@@ -65,6 +66,7 @@ async def start_bot():
             token=config.BOT_TOKEN.get_secret_value(),
             default=DefaultBotProperties(parse_mode="HTML")
         )
+        bot.session.middleware(TranslateMiddleware())
         bot.session.middleware(PremiumEmojiMiddleware())
         try:
             me = await bot.get_me()
