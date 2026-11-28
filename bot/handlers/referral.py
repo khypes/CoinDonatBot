@@ -83,13 +83,13 @@ async def show_referral(message: Message, session: AsyncSession, db_user: User):
     ref_count = ref_result.scalar() or 0
 
     # Fix #4: confirmed count — referred users who have at least one completed order
-    from db.models.order import Order
+    from db.models.order import Order, OrderStatus
     confirmed_result = await session.execute(
         select(func.count(func.distinct(Order.user_id))).where(
             Order.user_id.in_(
                 select(User.id).where(User.referred_by == db_user.referral_code)
             ),
-            Order.status == "completed"
+            Order.status == OrderStatus.COMPLETED
         )
     )
     confirmed_count = confirmed_result.scalar() or 0
